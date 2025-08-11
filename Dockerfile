@@ -72,4 +72,9 @@ USER root
 
 # Pass custom command to entrypoint script provided by the base image
 ENTRYPOINT ["/entrypoint.sh"]
+# Install FastAPI dependencies
+RUN uv pip install fastapi uvicorn pydantic
+
+# Expose the API port
+EXPOSE 8080
 CMD [".venv/bin/python", "-m" ,"app.main"]

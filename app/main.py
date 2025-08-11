@@ -1,56 +1,88 @@
-import asyncio
-import os
-import subprocess
+from fastapi import FastAPI, Request
+from contextlib import asynccontextmanager
+import uvicorn
 
-import zendriver as zd
+from app.core.config import get_settings
+from app.core.database import init_db
+from app.api.routes import navigation, interaction, extraction, substack, workflows
+from app.utils.logger import setup_logger
+from app.utils.metrics import MetricsCollector
 
+# Get settings
+settings = get_settings()
 
-async def start_browser() -> zd.Browser:
-    browser = await zd.start(
-        # use wayland for rendering instead of default X11 backend
-        browser_args=["--enable-features=UseOzonePlatform", "--ozone-platform=wayland"],
-    )
-    return browser
+# Setup logging
+logger = setup_logger("main", level=settings.log_level)
 
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    """Application lifespan manager"""
+    logger.info("Starting application...")
+    
+    # Initialize database
+    init_db()
+    
+    # Initialize services
+    app.state.metrics = MetricsCollector()
+    
+    yield
+    
+    logger.info("Shutting down application...")
 
-async def main() -> None:
-    print(f"Zendriver Docker demo (zendriver {zd.__version__})")
-    chrome_version = " ".join(
-        (
-            subprocess.run(
-                ["google-chrome-stable", "--version"], stdout=subprocess.PIPE
-            )
-            .stdout.decode("utf-8")
-            .split(" ")[:3]
-        )
-    )
-    print(
-        f"{chrome_version} {os.uname().machine} ({os.uname().sysname} {os.uname().release})\n"
-    )
+# Create app
+app = FastAPI(
+    title=settings.app_name,
+    version=settings.version,
+    lifespan=lifespan
+)
 
-    print("Starting browser...")
-    browser = await start_browser()
-    print("Browser successfully started!")
+# Include routers
+app.include_router(navigation.router, prefix="/api/v1")
+app.include_router(interaction.router, prefix="/api/v1")
+app.include_router(extraction.router, prefix="/api/v1")
+app.include_router(substack.router, prefix="/api/v1")
+app.include_router(workflows.router, prefix="/api/v1")
 
-    print("Visiting https://example.com...")
-    page = await browser.get("https://example.com")
-    print("Page loaded successfully!\n")
-
-    await page.update_target()
-    assert page.target
-    print("Page title:", page.target.title)
-
-    print(
-        (
-            "\nDemo complete.\n"
-            "- Try using a VNC viewer to visit the Docker container's built-in VNC server at http://localhost:5910.\n"
-            "- VNC allows for easy debugging and inspection of the browser window.\n"
-            "- For some tasks which may not be fully possible to automate, it can also be used to manually interact with the browser.\n\n"
-            "When you are done, press Ctrl+C to exit the demo."
-        )
-    )
-    await asyncio.Future()  # wait forever
-
+# Add middleware
+@app.middleware("http")
+async def add_request_id(request: Request, call_next):
+    import uuid
+    request_id = str(uuid.uuid4())
+    request.state.request_id = request_id
+    
+    response = await call_next(request)
+    response.headers["X-Request-ID"] = request_id
+    
+    return response
 
 if __name__ == "__main__":
-    asyncio.run(main())
+    uvicorn.run(
+        "main:app",
+        host="0.0.0.0",
+        port=8080,
+        reload=settings.debug,
+        log_config={
+            "version": 1,
+            "disable_existing_loggers": False,
+            "formatters": {
+                "default": {
+                    "format": "%(asctime)s - %(name)s - %(levelname)s - %(message)s",
+                },
+                "json": {
+                    "class": "pythonjsonlogger.jsonlogger.JsonFormatter",
+                    "format": "%(asctime)s %(name)s %(levelname)s %(message)s"
+                }
+            },
+            "handlers": {
+                "default": {
+                    "formatter": "json",
+                    "class": "logging.StreamHandler",
+                    "stream": "ext://sys.stdout"
+                }
+            },
+            "root": {
+                "level": "INFO",
+                "handlers": ["default"]
+            }
+        }
+    )
