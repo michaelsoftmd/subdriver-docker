@@ -8,7 +8,7 @@ services:
       - swayvnc-wayvnc-certs:/certs
     environment:
       - RENDER_GROUP_GID=992
-      - SWAY_RESOLUTION=1920x1080
+      - SWAY_RESOLUTION=640x480
       - WAYVNC_PORT=5910
       - WAYVNC_ENABLE_AUTH=true
       - WAYVNC_USERNAME=wayvnc

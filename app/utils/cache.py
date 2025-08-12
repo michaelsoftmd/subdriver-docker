@@ -1,11 +1,10 @@
 import json
 import time
 import hashlib
+import pickle  # ADDED MISSING IMPORT
 from typing import Optional, Any, Dict
 from functools import wraps
 import asyncio
-import redis.asyncio as redis
-import pickle
 
 class CacheManager:
     """Flexible cache manager supporting memory and Redis"""
@@ -17,6 +16,7 @@ class CacheManager:
         
         if settings.redis_url:
             try:
+                import redis.asyncio as redis
                 self.redis_client = redis.from_url(settings.redis_url)
             except:
                 print("Redis not available, using memory cache")
@@ -129,15 +129,3 @@ def cached(prefix: str, ttl: Optional[int] = None):
             return result
         return wrapper
     return decorator
-
-# Usage example in service:
-class SubstackService:
-    def __init__(self, browser, cache):
-        self.browser = browser
-        self.cache = cache
-    
-    @cached("publication_info", ttl=3600)  # Cache for 1 hour
-    async def get_publication_info(self, url: str):
-        """Get publication info with caching"""
-        # This will be cached automatically
-        return await self._fetch_publication_info(url)

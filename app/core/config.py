@@ -26,8 +26,8 @@ class Settings(BaseSettings):
     profiles_dir: str = "/app/data/profiles"
     exports_dir: str = "/app/data/exports"
     
-    # Database
-    database_url: str = "sqlite:////app/data/research.db"
+    # Database (FIXED: 3 slashes instead of 4)
+    database_url: str = "sqlite:///app/data/research.db"
     
     # Rate limiting
     rate_limit_enabled: bool = True
@@ -52,7 +52,3 @@ class Settings(BaseSettings):
 def get_settings() -> Settings:
     """Get cached settings instance"""
     return Settings()
-
-# Usage throughout your app:
-# from app.core.config import get_settings
-# settings = get_settings()

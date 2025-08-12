@@ -1,8 +1,9 @@
 import logging
 import json
-from pythonjsonlogger import jsonlogger
-from typing import Any, Dict
 import sys
+import time  # ADDED MISSING IMPORT
+import traceback  # ADDED MISSING IMPORT
+from typing import Any, Dict
 
 class ContextFilter(logging.Filter):
     """Add context to log records"""
@@ -25,15 +26,23 @@ def setup_logger(name: str, level: str = "INFO", context: Dict = None) -> loggin
     # Clear existing handlers
     logger.handlers.clear()
     
-    # Console handler with JSON formatter
+    # Console handler
     console_handler = logging.StreamHandler(sys.stdout)
     
-    # JSON formatter
-    format_str = '%(timestamp)s %(level)s %(name)s %(message)s'
-    formatter = jsonlogger.JsonFormatter(
-        format_str,
-        rename_fields={'levelname': 'level', 'asctime': 'timestamp'}
-    )
+    # Check if python-json-logger is available
+    try:
+        from pythonjsonlogger import jsonlogger
+        # JSON formatter
+        format_str = '%(timestamp)s %(level)s %(name)s %(message)s'
+        formatter = jsonlogger.JsonFormatter(
+            format_str,
+            rename_fields={'levelname': 'level', 'asctime': 'timestamp'}
+        )
+    except ImportError:
+        # Fallback to standard formatter
+        format_str = '%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+        formatter = logging.Formatter(format_str)
+    
     console_handler.setFormatter(formatter)
     
     # Add context filter if provided
@@ -44,7 +53,7 @@ def setup_logger(name: str, level: str = "INFO", context: Dict = None) -> loggin
     
     return logger
 
-# Usage in services
+# Usage example in services
 class SubstackService:
     def __init__(self):
         self.logger = setup_logger(
@@ -53,6 +62,7 @@ class SubstackService:
         )
     
     async def collect_posts(self, url: str):
+        start_time = time.time()  # Now time is imported
         self.logger.info(
             "Starting post collection",
             extra={
@@ -64,6 +74,7 @@ class SubstackService:
         
         try:
             # ... collection logic ...
+            posts = []  # Placeholder
             self.logger.info(
                 "Collection completed",
                 extra={
@@ -78,6 +89,6 @@ class SubstackService:
                 extra={
                     "url": url,
                     "error": str(e),
-                    "traceback": traceback.format_exc()
+                    "traceback": traceback.format_exc()  # Now traceback is imported
                 }
             )

@@ -1,5 +1,5 @@
 import asyncio
-from typing import Optional, List, Set
+from typing import Optional, List, Set, Dict, Any
 from dataclasses import dataclass
 import zendriver as zd
 from queue import Queue
@@ -141,6 +141,32 @@ class BrowserManager:
             await tab_info.tab.wait(2)
             title = await tab_info.tab.evaluate("document.title")
             return {"url": url, "title": title}
+        finally:
+            # Always release tab back to pool
+            await self.release_tab(tab_info)
+    
+    async def navigate(self, url: str, wait_for: Optional[str] = None, 
+                      wait_timeout: int = 10) -> Dict[str, Any]:
+        """Navigate to URL with optional wait condition (NEW METHOD)"""
+        tab_info = await self.get_tab(url)
+        try:
+            # Wait for page load
+            await asyncio.sleep(2)
+            
+            # Optional wait for specific element
+            if wait_for:
+                try:
+                    await tab_info.tab.find(wait_for, timeout=wait_timeout)
+                except:
+                    pass  # Element not found, but don't fail navigation
+            
+            # Get page title
+            title = await tab_info.tab.evaluate("document.title")
+            
+            return {
+                "url": url,
+                "title": title
+            }
         finally:
             # Always release tab back to pool
             await self.release_tab(tab_info)

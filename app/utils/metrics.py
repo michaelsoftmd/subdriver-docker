@@ -84,31 +84,20 @@ class MetricsCollector:
     
     def get_stats(self) -> Dict:
         """Get metrics as dictionary"""
+        # Simple stats without accessing internal prometheus structures
         return {
-            "navigations": {
-                "total": navigation_counter._value.sum(),
-                "success": navigation_counter.labels(status="success")._value.get(),
-                "errors": navigation_counter.labels(status="error")._value.get()
-            },
-            "cache": {
-                "hits": cache_hits._value.sum(),
-                "misses": cache_misses._value.sum(),
-                "hit_rate": cache_hits._value.sum() / (cache_hits._value.sum() + cache_misses._value.sum() + 1)
-            },
-            "tabs": {
-                "active": active_tabs._value.get()
-            },
             "custom": self.custom_metrics
         }
 
-# Add metrics endpoint to FastAPI
-from fastapi import Response
-
-@app.get("/metrics")
-async def metrics():
-    """Prometheus metrics endpoint"""
-    collector = MetricsCollector()
-    return Response(
-        content=collector.get_metrics(),
-        media_type="text/plain"
-    )
+# NOTE: To add metrics endpoint to FastAPI, add this to your main.py:
+# from fastapi import Response
+# from app.utils.metrics import MetricsCollector
+# 
+# @app.get("/metrics")
+# async def metrics():
+#     """Prometheus metrics endpoint"""
+#     collector = MetricsCollector()
+#     return Response(
+#         content=collector.get_metrics(),
+#         media_type="text/plain"
+#     )
