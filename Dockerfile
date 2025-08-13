@@ -39,51 +39,37 @@ COPY --from=ghcr.io/astral-sh/uv:latest /uv /uvx /bin/
 ENV UV_COMPILE_BYTECODE=1
 ENV UV_LINK_MODE=copy
 
-# Create app directory and set ownership immediately
-RUN mkdir -p /app && \
-    chown -R $DOCKER_USER:$DOCKER_USER /app
+# Make directory for the app
+RUN mkdir /app
+RUN chown $DOCKER_USER:$DOCKER_USER /app
+
+# Switch to the non-root user
+USER $DOCKER_USER
 
 # Set the working directory
 WORKDIR /app
 
-# Set UV cache to a location we can write to
-ENV UV_CACHE_DIR=/tmp/uv-cache
-
-# Install python and ADD IT TO PATH
+# Install python
 RUN uv python install 3.13
-ENV PATH="/root/.local/bin:$PATH"
 
 # Install the Python project's dependencies using the lockfile and settings
-# Use --chown to ensure files are owned by $DOCKER_USER from the start
 COPY --chown=$DOCKER_USER:$DOCKER_USER pyproject.toml uv.lock /app/
-
-# Install dependencies
-RUN uv sync --frozen --no-install-project
+RUN --mount=type=cache,target=/home/$DOCKER_USER/.cache/uv,uid=$PUID,gid=$PGID \
+    uv sync --frozen --no-install-project
 
 # Then, add the rest of the project source code and install it
-COPY --chown=$DOCKER_USER:$DOCKER_USER . /app/
+# Installing separately from its dependencies allows optimal layer caching
+COPY --chown=$DOCKER_USER:$DOCKER_USER . /app
 
 # Add binaries from the project's virtual environment to the PATH
-ENV PATH="/app/.venv/bin:/root/.local/bin:$PATH"
+ENV PATH="/app/.venv/bin:$PATH"
 
 # Sync the project's dependencies and install the project
-RUN uv sync --frozen && \
-    uv pip install \
-    fastapi \
-    uvicorn \
-    pydantic \
-    pydantic-settings \
-    sqlalchemy \
-    httpx
+RUN --mount=type=cache,target=/home/$DOCKER_USER/.cache/uv,uid=$PUID,gid=$PGID \
+    uv sync --frozen
 
-# FIX: Make everything accessible to $DOCKER_USER
-RUN chown -R $DOCKER_USER:$DOCKER_USER /app
+USER root
 
 # Pass custom command to entrypoint script provided by the base image
 ENTRYPOINT ["/entrypoint.sh"]
-
-# Expose the API port
-EXPOSE 8080
-
-# Command to run the application
-CMD ["/app/.venv/bin/python", "-m", "app.main"]
+CMD [".venv/bin/python", "-m" ,"app.main"]
