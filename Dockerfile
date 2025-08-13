@@ -39,8 +39,9 @@ COPY --from=ghcr.io/astral-sh/uv:latest /uv /uvx /bin/
 ENV UV_COMPILE_BYTECODE=1
 ENV UV_LINK_MODE=copy
 
-# Create app directory
-RUN mkdir -p /app
+# Create app directory and set ownership immediately
+RUN mkdir -p /app && \
+    chown -R $DOCKER_USER:$DOCKER_USER /app
 
 # Set the working directory
 WORKDIR /app
@@ -53,13 +54,14 @@ RUN uv python install 3.13
 ENV PATH="/root/.local/bin:$PATH"
 
 # Install the Python project's dependencies using the lockfile and settings
-COPY pyproject.toml uv.lock /app/
+# Use --chown to ensure files are owned by $DOCKER_USER from the start
+COPY --chown=$DOCKER_USER:$DOCKER_USER pyproject.toml uv.lock /app/
 
 # Install dependencies
 RUN uv sync --frozen --no-install-project
 
 # Then, add the rest of the project source code and install it
-COPY . /app/
+COPY --chown=$DOCKER_USER:$DOCKER_USER . /app/
 
 # Add binaries from the project's virtual environment to the PATH
 ENV PATH="/app/.venv/bin:/root/.local/bin:$PATH"
@@ -73,6 +75,9 @@ RUN uv sync --frozen && \
     pydantic-settings \
     sqlalchemy \
     httpx
+
+# FIX: Make everything accessible to $DOCKER_USER
+RUN chown -R $DOCKER_USER:$DOCKER_USER /app
 
 # Pass custom command to entrypoint script provided by the base image
 ENTRYPOINT ["/entrypoint.sh"]
