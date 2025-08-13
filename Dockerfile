@@ -39,12 +39,8 @@ COPY --from=ghcr.io/astral-sh/uv:latest /uv /uvx /bin/
 ENV UV_COMPILE_BYTECODE=1
 ENV UV_LINK_MODE=copy
 
-# Make directory for the app as root (last time we use root)
-RUN mkdir -p /app && \
-    chown $DOCKER_USER:$DOCKER_USER /app
-
-# Switch to the non-root user - NEVER GO BACK TO ROOT
-USER $DOCKER_USER
+# Create app directory
+RUN mkdir -p /app
 
 # Set the working directory
 WORKDIR /app
@@ -52,26 +48,25 @@ WORKDIR /app
 # Set UV cache to a location we can write to
 ENV UV_CACHE_DIR=/tmp/uv-cache
 
-# Install python
+# Install python and ADD IT TO PATH
 RUN uv python install 3.13
+ENV PATH="/root/.local/bin:$PATH"
 
 # Install the Python project's dependencies using the lockfile and settings
-COPY --chown=$DOCKER_USER:$DOCKER_USER pyproject.toml uv.lock /app/
+COPY pyproject.toml uv.lock /app/
 
-# Run without cache mount - simpler and avoids permission issues
+# Install dependencies
 RUN uv sync --frozen --no-install-project
 
 # Then, add the rest of the project source code and install it
-COPY --chown=$DOCKER_USER:$DOCKER_USER . /app
+COPY . /app/
 
 # Add binaries from the project's virtual environment to the PATH
-ENV PATH="/app/.venv/bin:$PATH"
+ENV PATH="/app/.venv/bin:/root/.local/bin:$PATH"
 
 # Sync the project's dependencies and install the project
-RUN uv sync --frozen
-
-# Install FastAPI dependencies using uv pip (not .venv/bin/pip)
-RUN uv pip install \
+RUN uv sync --frozen && \
+    uv pip install \
     fastapi \
     uvicorn \
     pydantic \
@@ -86,4 +81,4 @@ ENTRYPOINT ["/entrypoint.sh"]
 EXPOSE 8080
 
 # Command to run the application
-CMD [".venv/bin/python", "-m", "app.main"]
+CMD ["/app/.venv/bin/python", "-m", "app.main"]
