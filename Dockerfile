@@ -52,24 +52,36 @@ WORKDIR /app
 # Install python
 RUN uv python install 3.13
 
-# Install the Python project's dependencies using the lockfile and settings
-COPY --chown=$DOCKER_USER:$DOCKER_USER pyproject.toml uv.lock /app/
-RUN --mount=type=cache,target=/home/$DOCKER_USER/.cache/uv,uid=$PUID,gid=$PGID \
-    uv sync --frozen --no-install-project
+# Copy dependency files
+COPY --chown=$DOCKER_USER:$DOCKER_USER pyproject.toml /app/
+COPY --chown=$DOCKER_USER:$DOCKER_USER uv.lock* /app/
 
-# Then, add the rest of the project source code and install it
-# Installing separately from its dependencies allows optimal layer caching
-COPY --chown=$DOCKER_USER:$DOCKER_USER . /app
+# Install dependencies only (not the project itself)
+RUN uv sync --no-install-project || \
+    (uv venv && \
+    uv pip install \
+        zendriver \
+        fastapi \
+        uvicorn[standard] \
+        pydantic \
+        pydantic-settings \
+        sqlalchemy \
+        httpx \
+        redis \
+        prometheus-client \
+        python-json-logger)
+
+# Copy the application code
+COPY --chown=$DOCKER_USER:$DOCKER_USER app /app/app
+
+# Create data directory
+RUN mkdir -p /app/data
 
 # Add binaries from the project's virtual environment to the PATH
 ENV PATH="/app/.venv/bin:$PATH"
-
-# Sync the project's dependencies and install the project
-RUN --mount=type=cache,target=/home/$DOCKER_USER/.cache/uv,uid=$PUID,gid=$PGID \
-    uv sync --frozen
 
 USER root
 
 # Pass custom command to entrypoint script provided by the base image
 ENTRYPOINT ["/entrypoint.sh"]
-CMD [".venv/bin/python", "-m" ,"app.main"]
+CMD [".venv/bin/python", "-m", "app.main"]

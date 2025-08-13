@@ -2,14 +2,15 @@ from sqlalchemy import create_engine, Column, Integer, String, DateTime, JSON, T
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import sessionmaker, Session
 from sqlalchemy.sql import func
-from typing import Generator
+from typing import Generator, Dict, Any, List, Optional
 import json
+import os
 
 from app.core.config import get_settings
 
 settings = get_settings()
 
-# Create engine
+# Create engine with proper SQLite URL (3 slashes for absolute path)
 engine = create_engine(
     settings.database_url,
     connect_args={"check_same_thread": False} if "sqlite" in settings.database_url else {}
@@ -46,6 +47,9 @@ class CollectedPost(Base):
 # Database initialization
 def init_db():
     """Create all tables"""
+    # Ensure directory exists
+    db_path = settings.database_url.replace("sqlite:///", "")
+    os.makedirs(os.path.dirname(db_path), exist_ok=True)
     Base.metadata.create_all(bind=engine)
 
 def get_db() -> Generator[Session, None, None]:
@@ -88,3 +92,68 @@ class ResearchRepository:
                 session.status = status
             self.db.commit()
         return session
+
+# Simplified DatabaseManager for compatibility
+class DatabaseManager:
+    """Database manager with simpler interface"""
+    
+    def __init__(self):
+        self.db_url = get_settings().database_url
+    
+    def save_research_session(self, workflow_id: str, topic: str, data: Dict[str, Any]):
+        """Save research session data"""
+        db = next(get_db())
+        try:
+            repo = ResearchRepository(db)
+            existing = repo.get_session(workflow_id)
+            if existing:
+                repo.update_session(workflow_id, data)
+            else:
+                repo.create_session(workflow_id, topic, data)
+        finally:
+            db.close()
+    
+    def get_research_sessions(self, workflow_id: Optional[str] = None, limit: int = 100) -> List[Dict]:
+        """Get research sessions"""
+        db = next(get_db())
+        try:
+            if workflow_id:
+                sessions = db.query(ResearchSession).filter(
+                    ResearchSession.workflow_id == workflow_id
+                ).all()
+            else:
+                sessions = db.query(ResearchSession).order_by(
+                    ResearchSession.created_at.desc()
+                ).limit(limit).all()
+            
+            return [
+                {
+                    "id": s.id,
+                    "workflow_id": s.workflow_id,
+                    "topic": s.topic,
+                    "created_at": s.created_at.isoformat() if s.created_at else None,
+                    "status": s.status,
+                    "data": s.data
+                }
+                for s in sessions
+            ]
+        finally:
+            db.close()
+    
+    def save_collected_post(self, post_data: Dict[str, Any]):
+        """Save collected post data"""
+        db = next(get_db())
+        try:
+            post = CollectedPost(
+                url=post_data.get('url'),
+                publication=post_data.get('publication'),
+                title=post_data.get('title'),
+                author=post_data.get('author'),
+                published_date=post_data.get('published_date'),
+                content=post_data.get('content'),
+                data=post_data
+            )
+            db.add(post)
+            db.commit()
+        finally:
+            db.close()

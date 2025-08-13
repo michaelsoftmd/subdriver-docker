@@ -2,13 +2,15 @@ import asyncio
 from typing import Optional, List, Set, Dict, Any
 from dataclasses import dataclass
 import zendriver as zd
-from queue import Queue
 import time
+import logging
+
+logger = logging.getLogger(__name__)
 
 @dataclass
 class TabInfo:
     """Information about a browser tab"""
-    tab: any  # zendriver tab object
+    tab: Any  # zendriver tab object
     url: str
     in_use: bool = False
     created_at: float = None
@@ -77,8 +79,11 @@ class TabPool:
                 self.in_use_tabs.remove(tab_info)
             
             # Clear sensitive data from tab
-            await tab_info.tab.evaluate("window.localStorage.clear()")
-            await tab_info.tab.evaluate("window.sessionStorage.clear()")
+            try:
+                await tab_info.tab.evaluate("window.localStorage.clear()")
+                await tab_info.tab.evaluate("window.sessionStorage.clear()")
+            except:
+                pass  # Tab might be closed or in invalid state
             
             await self.available_tabs.put(tab_info)
     
@@ -97,12 +102,18 @@ class TabPool:
         async with self.lock:
             # Close in-use tabs
             for tab_info in self.in_use_tabs:
-                await tab_info.tab.close()
+                try:
+                    await tab_info.tab.close()
+                except:
+                    pass
             
             # Close available tabs
             while not self.available_tabs.empty():
-                tab_info = await self.available_tabs.get()
-                await tab_info.tab.close()
+                try:
+                    tab_info = await self.available_tabs.get()
+                    await tab_info.tab.close()
+                except:
+                    pass
 
 class BrowserManager:
     """Enhanced browser manager with tab pooling"""
@@ -117,6 +128,7 @@ class BrowserManager:
         """Get or create browser instance"""
         async with self.lock:
             if not self.browser:
+                logger.info("Starting new browser instance")
                 self.browser = await zd.start(
                     headless=self.settings.browser_headless,
                     browser_args=self.settings.browser_args
@@ -138,7 +150,7 @@ class BrowserManager:
         tab_info = await self.get_tab(url)
         try:
             # Do navigation work
-            await tab_info.tab.wait(2)
+            await asyncio.sleep(2)
             title = await tab_info.tab.evaluate("document.title")
             return {"url": url, "title": title}
         finally:
@@ -147,7 +159,7 @@ class BrowserManager:
     
     async def navigate(self, url: str, wait_for: Optional[str] = None, 
                       wait_timeout: int = 10) -> Dict[str, Any]:
-        """Navigate to URL with optional wait condition (NEW METHOD)"""
+        """Navigate to URL with optional wait condition"""
         tab_info = await self.get_tab(url)
         try:
             # Wait for page load
@@ -170,3 +182,18 @@ class BrowserManager:
         finally:
             # Always release tab back to pool
             await self.release_tab(tab_info)
+    
+    async def close_browser(self):
+        """Safely close browser and cleanup"""
+        async with self.lock:
+            if self.tab_pool:
+                await self.tab_pool.cleanup()
+            
+            if self.browser:
+                logger.info("Shutting down browser")
+                try:
+                    await self.browser.stop()
+                except Exception as e:
+                    logger.error(f"Error closing browser: {e}")
+                finally:
+                    self.browser = None
