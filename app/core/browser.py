@@ -1,6 +1,6 @@
 import asyncio
 from typing import Optional, List, Set, Dict, Any
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 import zendriver as zd
 import time
 import logging
@@ -9,12 +9,19 @@ logger = logging.getLogger(__name__)
 
 @dataclass
 class TabInfo:
-    """Information about a browser tab"""
+    """Information about a browser tab - Made hashable for set operations"""
     tab: Any  # zendriver tab object
     url: str
     in_use: bool = False
-    created_at: float = None
-    last_used: float = None
+    created_at: float = field(default_factory=time.time)
+    last_used: float = field(default_factory=time.time)
+    
+    # Make TabInfo hashable by using id
+    def __hash__(self):
+        return hash(id(self))
+    
+    def __eq__(self, other):
+        return id(self) == id(other)
 
 class TabPool:
     """Manage a pool of browser tabs for reuse"""
